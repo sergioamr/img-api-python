@@ -3,8 +3,9 @@ import requests
 
 
 class ImgAPI():
-    _instance = None
+    user = None
     token = None
+    _instance = None
 
     def __new__(cls):
         # Singleton
@@ -16,6 +17,19 @@ class ImgAPI():
 
         return cls._instance
 
+    def get_api_url(self, url):
+        api_url = self.api_entry + url
+        if not self.token:
+            return api_url
+
+        if url.find("?") == -1:
+            api_url += "?"
+        else:
+            api_url += "&"
+
+        api_url += "key=" + self.token
+        return api_url
+
     def setup(self, api_entry, props={}):
         self.props = props
         self.api_entry = api_entry
@@ -24,15 +38,7 @@ class ImgAPI():
             self.token = props.token
 
     def api_call(self, url, data=None):
-        api_url = self.api_entry + url
-        if self.token:
-            if url.find("?"):
-                api_url += "&"
-            else:
-                api_url += "?"
-
-            api_url += "key=" + self.token
-
+        api_url = self.get_api_url(url)
         try:
             if data:
                 r = requests.post(api_url, json=data)
@@ -45,8 +51,40 @@ class ImgAPI():
 
         return r.json()
 
+    def api_upload(self, file_paths, gallery_id=None, data=None):
+        files = []
+        for path in file_paths:
+            f = open(path, 'rb')
+
+            name = path.split("/")[-1]
+            files.append((name, f))
+
+        if not files:
+            return False
+
+        upload_url = "/media/upload"
+        if gallery_id: upload_url += "?gallery_id=" + gallery_id
+
+        api_url = self.get_api_url(upload_url)
+        try:
+            r = requests.post(api_url, files=files, json=data)
+        except requests.exceptions.RequestException as e:
+            print(" Failed on request ")
+            raise e
+
+        return r.json()
+
     def create_user(self, user_data):
-        return self.api_call("/create", user_data)
+        json = self.api_call("/user/create", user_data)
+
+        if 'token' in json:
+            self.token = json['token']
+
+        if 'user' in json:
+            self.user = json['user']
+            return self.user
+
+        return None
 
     def create_user_helper(self, username, password, email, first_name,
                            last_name):
@@ -57,8 +95,11 @@ class ImgAPI():
             'last_name': last_name,
             'email': email,
         }
-        return self.api_call("/create_user", user_obj)
+        return self.api_call("/user/create", user_obj)
 
     def hello_world(self):
         print(" Hello world ")
         return self.api_call("/hello_world")
+
+    def get_token(self):
+        return self.api_call("/user/token")
