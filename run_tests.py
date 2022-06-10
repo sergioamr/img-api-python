@@ -1,14 +1,10 @@
+import os
 
 from unittest import TestLoader, TextTestRunner, TestSuite
-from tests.unit_test import *
-
-test_cases = [TestUser]
 
 loader = TestLoader()
-
-for test_class in test_cases:
-    tests = loader.loadTestsFromTestCase(test_class)
-
+this_dir = os.path.dirname(__file__)
+tests = loader.discover(start_dir="tests/", pattern="*")
 suite = TestSuite(tests)
 
 runner = TextTestRunner(verbosity=2)
