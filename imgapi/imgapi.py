@@ -52,12 +52,13 @@ class ImgAPI():
         return r.json()
 
     def api_upload(self, file_paths, gallery_id=None, data=None):
-        files = []
+        files = {}
+
         for path in file_paths:
             f = open(path, 'rb')
 
             name = path.split("/")[-1]
-            files.append((name, f))
+            files[name] = (name, f)
 
         if not files:
             return False
@@ -67,7 +68,8 @@ class ImgAPI():
 
         api_url = self.get_api_url(upload_url)
         try:
-            r = requests.post(api_url, files=files, json=data)
+
+            r = requests.post(api_url, files=files, data=data)
         except requests.exceptions.RequestException as e:
             print(" Failed on request ")
             raise e
