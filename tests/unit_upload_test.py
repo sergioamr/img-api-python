@@ -10,15 +10,15 @@ class TestUpload(unittest.TestCase):
 
         basepath = "tests/upload/"
         file_list = []
-        data = {}
+        data = []
 
         idx = 0
         for entry in os.listdir(basepath):
-            data[entry] = json.dumps({"my_title": str(idx) + ":: My test title"})
+            data.append({"my_title": str(idx) + ":: My test title"})
             file_list.append(os.path.join(basepath, entry))
             idx += 1
 
-        json_res = api.api_upload(file_list, data=data)
+        json_res = api.api_upload(file_list, data_list=data)
         self.assertEqual(json_res['status'], "success", "Upload failed")
 
         media = json_res['media_files'][0]

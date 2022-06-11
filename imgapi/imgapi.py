@@ -51,14 +51,20 @@ class ImgAPI():
 
         return r.json()
 
-    def api_upload(self, file_paths, gallery_id=None, data=None):
+    def api_upload(self, file_paths, gallery_id=None, data_list=None):
         files = {}
 
-        for path in file_paths:
+        data = None
+        if data_list: data = {}
+
+        for idx, path in enumerate(file_paths):
             f = open(path, 'rb')
 
             name = path.split("/")[-1]
             files[name] = (name, f)
+
+            if data_list and len(data_list) > idx:
+                data[name] = json.dumps(data_list[idx])
 
         if not files:
             return False
