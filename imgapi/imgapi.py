@@ -85,6 +85,10 @@ class ImgAPI():
     def create_user(self, user_data):
         json = self.api_call("/user/create", user_data)
 
+        if 'error_msg' in json:
+            print(" Failed creating user " + str(json['error_msg']))
+            return json
+
         if 'token' in json:
             self.token = json['token']
 
