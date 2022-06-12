@@ -92,7 +92,7 @@ class ImgAPI():
             self.user = json['user']
             return self.user
 
-        return None
+        return json
 
     def create_user_helper(self, username, password, email, first_name,
                            last_name):
