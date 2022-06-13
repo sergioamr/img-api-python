@@ -86,7 +86,7 @@ class ImgAPI():
         json = self.api_call("/user/create", user_data)
 
         if 'error_msg' in json:
-            print(" Failed creating user " + str(json['error_msg']))
+            print(" Failed creating user: " + str(json['error_msg']))
             return json
 
         if 'token' in json:
