@@ -114,4 +114,16 @@ class ImgAPI():
         return self.api_call("/hello_world")
 
     def get_token(self):
-        return self.api_call("/user/token")
+        if self.token:
+            return self.token
+
+        res = self.api_call("/user/token")
+        if 'error_msg' in res:
+            print("ERROR: " + res['error_msg'])
+            return res
+
+        if 'token' not in res:
+            return res
+
+        self.token = res['token']
+        return self.token

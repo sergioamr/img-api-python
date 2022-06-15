@@ -3,9 +3,9 @@ from imgapi.imgapi import ImgAPI
 ############## Login with an user first ####################
 
 testing_user = {
-    'username': "python_unittest",
+    'username': "python_unittest_1",
     'password': "123password!",
-    'email': "unittest@img-api.com",
+    'email': "unittest_1@img-api.com",
     'is_media_public': False,
     'is_public': False
 }
