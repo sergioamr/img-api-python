@@ -3,6 +3,7 @@ import requests
 
 from imgapi.version import __version__
 
+
 class ImgAPI():
     user = None
     token = None
@@ -128,3 +129,15 @@ class ImgAPI():
 
         self.token = res['token']
         return self.token
+
+    def create_gallery(self, gallery_def):
+        json = self.api_call("/user/list/create", gallery_def)
+        return json
+
+    def get_gallery_by_id(self, gallery_id):
+        json = self.api_call("/user/list/get_by_id/" + gallery_id)
+        return json
+
+    def remove_gallery_by_id(self, gallery_id):
+        json = self.api_call("/user/me/list/" + gallery_id + "/remove")
+        return json
