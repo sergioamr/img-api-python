@@ -3,7 +3,7 @@ from tests import api
 
 class TestUser(unittest.TestCase):
     def test_get_token(self):
-        json = api.get_token()
-        self.assertEqual(json['status'], "success", "Token failed")
-        self.assertEqual(len(json['token']), 201)
+        token = api.get_token()
+        print(" Token " + str(len(token)))
+        self.assertGreaterEqual(len(token), 150)
 
