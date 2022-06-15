@@ -1,7 +1,7 @@
 import json
 import requests
 
-VERSION="v0.01pa"
+from imgapi.version import __version__
 
 class ImgAPI():
     user = None
@@ -12,7 +12,7 @@ class ImgAPI():
         # Singleton
         if cls._instance is None:
             print("================================")
-            print(" IMGAPI Start " + VERSION)
+            print(" IMGAPI Start v" + __version__)
             print("================================")
             cls._instance = super(ImgAPI, cls).__new__(cls)
 

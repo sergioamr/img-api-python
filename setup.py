@@ -1,7 +1,8 @@
+from imgapi.version import __version__
 from setuptools import setup
 
 setup(name='imgapi',
-      version='0.1',
+      version=__version__,
       description='Img-api.com installed',
       url='https://github.com/sergioamr/img-api-python',
       author='Sergio A. Martinez',
