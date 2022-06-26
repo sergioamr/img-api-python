@@ -2,7 +2,7 @@ import json
 import requests
 
 from imgapi.version import __version__
-
+from .tools import generate_file_md5
 
 class ImgAPI():
     user = None
@@ -132,12 +132,29 @@ class ImgAPI():
 
     def create_gallery(self, gallery_def):
         json = self.api_call("/user/list/create", gallery_def)
+        if 'galleries' in json:
+            return json['galleries'][0]
+
         return json
 
     def get_gallery_by_id(self, gallery_id):
         json = self.api_call("/user/list/get_by_id/" + gallery_id)
+        if 'galleries' in json:
+            return json['galleries'][0]
+
         return json
 
     def remove_gallery_by_id(self, gallery_id):
         json = self.api_call("/user/me/list/" + gallery_id + "/remove")
+        return json
+
+    def api_check_md5(self, file_path):
+        md5, size_file = generate_file_md5(file_path)
+
+        print(file_path + " MD5=" + md5)
+
+        check_url = "/media/check_md5/" + md5 + "?size=" + str(size_file)
+        self.api_call(check_url)
+
+        json = self.api_call(check_url)
         return json

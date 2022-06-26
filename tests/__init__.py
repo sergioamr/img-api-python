@@ -11,7 +11,7 @@ testing_user = {
 }
 
 api = ImgAPI()
-api.setup("http://localhost:5111/api", {})
+api.setup("http://localhost:5112/api", {})
 
 user = api.create_user(testing_user)
 
