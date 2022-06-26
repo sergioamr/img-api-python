@@ -1,4 +1,5 @@
 import unittest
+import json
 from tests import api
 
 class TestUser(unittest.TestCase):
@@ -6,4 +7,3 @@ class TestUser(unittest.TestCase):
         token = api.get_token()
         print(" Token " + str(len(token)))
         self.assertGreaterEqual(len(token), 150)
-
