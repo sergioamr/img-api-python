@@ -1,5 +1,6 @@
 import re
 import os
+import json
 from datetime import datetime
 
 from imgapi.imgapi import ImgAPI
@@ -12,18 +13,12 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.wait import WebDriverWait
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.firefox.options import Options
 
 init(autoreset=True)
 
 api = ImgAPI()
-api.setup("http://tothemoon.life/api", {})
 
-json = api.api_call(
-    "/news/query?status=WAITING_INDEX&limit=1&source=YFINANCE&publisher=GlobeNewswire"
-)
-
-print(Fore.BLUE + " FETCH " + str(json))
+api.setup(config_file=".config.json")
 
 
 def get_webdriver():
@@ -33,11 +28,13 @@ def get_webdriver():
 
     # Check if Chrome executable exists
     if not os.path.exists(chrome_executable_path):
-        raise FileNotFoundError(f"Chrome executable not found at {chrome_executable_path}")
+        raise FileNotFoundError(
+            f"Chrome executable not found at {chrome_executable_path}")
 
     # Check if ChromeDriver exists
     if not os.path.exists(chromedriver_path):
-        raise FileNotFoundError(f"ChromeDriver not found at {chromedriver_path}")
+        raise FileNotFoundError(
+            f"ChromeDriver not found at {chromedriver_path}")
 
     # Step 1: Setup Chrome options
     chrome_options = Options()
@@ -45,7 +42,7 @@ def get_webdriver():
 
     chrome_options.add_argument("--headless")
     chrome_options.add_argument("--disable-gpu")
-    #chrome_options.add_argument("--window-size=1920,1200")
+    chrome_options.add_argument("--window-size=1920,1200")
 
     # Step 2: Initialize the Chrome WebDriver
 
@@ -58,6 +55,22 @@ def get_webdriver():
 
 def print_b(text):
     print(Fore.BLUE + text)
+
+
+def print_g(text):
+    print(Fore.GREEN + text)
+
+
+def print_r(text):
+    print(Fore.RED + text)
+
+
+def print_e(text):
+    print(Back.RED +
+          "************************************************************")
+    print(Back.RED + text)
+    print(Back.RED +
+          "************************************************************")
 
 
 def print_exception(err, text=''):
@@ -73,89 +86,9 @@ def clean_article(article):
     return article
 
 
-def get_IBD_articles(url, driver):
-    "Use this for scraping news from investors.com"
+def yfetch_process_news(api, item):
 
-    article = ""
-
-    try:
-
-
-        try:
-            driver.get(url)
-
-            current_url = driver.execute_script("return window.location.href;")
-            print("Current URL:", current_url)
-
-            if 'consent' in current_url:
-                # We get the consent and click on it
-                link = WebDriverWait(driver, 1).until(
-                    EC.element_to_be_clickable((By.CLASS_NAME, "accept-all")))
-                link.click()
-
-        except Exception as e:
-            pass
-
-        try:
-            current_url = driver.execute_script("return window.location.href;")
-            print("Current URL:", current_url)
-
-            WebDriverWait(driver, 15).until(
-                EC.presence_of_element_located((By.TAG_NAME, "main")))
-
-            print("Main Page Title:", driver.title)
-
-            # Print all button elements on the main page
-            buttons = driver.find_elements(By.TAG_NAME, "button")
-            print(f"Found {len(buttons)} buttons on the main page.")
-            for index, button in enumerate(buttons):
-                try:
-                    if button.text:
-                        print(f"Button {index + 1}:")
-                        print("  Text:", button.text)
-                        #print("  ID:", button.get_attribute("id"))
-                        print("  Class:", button.get_attribute("class"))
-                        #print("  Name:", button.get_attribute("name"))
-                        print("  Type:", button.get_attribute("type"))
-                except Exception as e:
-                    print_exception(e, "CRASH")
-
-            with open(
-                    f"page_source_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html",
-                    "w",
-                    encoding="utf-8") as f:
-                f.write(driver.page_source)
-
-            link = WebDriverWait(driver, 15).until(
-                EC.element_to_be_clickable(
-                    (By.CLASS_NAME, "readmore-button-class")))
-
-            print(" LOADED BUTTON ")
-            link.click()
-        except Exception as e:
-            print_exception(e, "CRASH")
-            print(" Failed pressing button continue ")
-            pass
-
-        print(" LINK PRESSED ")
-        paragraphs = driver.find_elements(By.TAG_NAME, "p")
-        for paragraph in paragraphs:
-            if paragraph.text != "":
-                article += paragraph.text
-            if "YOU MIGHT ALSO LIKE" in paragraph.text:
-                break
-        article.replace("YOU MIGHT ALSO LIKE", "")
-
-    except Exception as e:
-        print_exception(e, "CRASH")
-
-    driver.quit()
-    return article
-
-
-def yfetch_process_news(item):
-
-    print_b("NEWS -> " + item['link'])
+    print_g(" NEWS -> " + item['link'])
 
     driver = get_webdriver()
 
@@ -169,18 +102,55 @@ def yfetch_process_news(item):
         driver.get(item["link"])
 
         try:
-            # We get the consent
-            link = driver.find_element(By.CLASS_NAME, "accept-all")
-            link.click()
+            # Check first if we are in the consent page (EU)
+            current_url = driver.execute_script("return window.location.href;")
+
+            if 'consent' in current_url:
+                print(" CONSENT URL:", current_url)
+                # We get the consent and click on it
+
+                accept_element = EC.element_to_be_clickable(
+                    (By.CLASS_NAME, "accept-all"))
+
+                link = WebDriverWait(driver, 5).until(accept_element)
+                link.click()
+
         except Exception as e:
+            print_exception(e, "CRASHED READING CONSENT")
             pass
 
         try:
-            link = driver.find_element(By.CLASS_NAME, "readmoreButtonText")
-            link.click()
+            current_url = driver.execute_script("return window.location.href;")
+            print(" URL:", current_url)
+
+            element_present = EC.presence_of_element_located(
+                (By.TAG_NAME, 'main'))
+
+            WebDriverWait(driver, 5).until(element_present)
+
+            buttons = driver.find_elements(By.TAG_NAME, "button")
+            print(f"Found {len(buttons)} buttons on the main page.")
+            for index, button in enumerate(buttons):
+                try:
+                    if not button.text: continue
+                    if button.get_attribute("type") == "submit": continue
+
+                    cl = button.get_attribute("class")
+                    print(
+                        f"Button {index + 1} Text: {Fore.BLUE} {button.text} {Style.RESET_ALL} {cl} "
+                    )
+                except Exception as e:
+                    print_exception(e, "CRASH")
+
+            try:
+                link = driver.find_element(By.CLASS_NAME, "readmoreButtonText")
+                if link:
+                    link.click()
+            except Exception as e:
+                print_r(" NO READ MORE BUTTON ")
+
         except Exception as e:
             print_exception(e, "CRASHED")
-            pass
 
         try:
             article = driver.find_element(By.TAG_NAME, "article")
@@ -199,16 +169,11 @@ def yfetch_process_news(item):
         driver.close()
     else:
         if item["publisher"] in ["Barrons", "MT Newswires"]:
-            if "title" in item:
-                articles.append(item["title"])
+            print_e(" TO BE IMPLEMENTED ")
 
         elif item["publisher"] == "Investor's Business Daily":
             try:
-                article = get_IBD_articles(item["link"], driver)
-                if article != "":
-                    print_b(" OK ")
-                    article = clean_article(article)
-                    articles.append(article)
+                print_e(" TO BE IMPLEMENTED ")
             except Exception as e:
                 print_exception(e, " FAILED ")
 
@@ -217,15 +182,43 @@ def yfetch_process_news(item):
     # Reindex because we haven't finish this code
 
     if len(articles) > 0:
-        item.articles = articles
-        item.save(validate=False)
-        item.set_state("INDEXED")
+        item['articles'] = articles
+        item['state'] = "INDEXED"
     else:
-        item.set_state("ERROR: ARTICLES NOT FOUND")
+        item['state'] = "ERROR: ARTICLES NOT FOUND"
+
+    return item
 
 
-for article in json['news']:
-    print(Fore.GREEN + " FETCH LINK " + article['link'])
-    yfetch_process_news(article)
+##############################################################################################
 
-print(" TEST ")
+api_params = "?status=WAITING_INDEX&limit=1&source=YFINANCE&publisher=GlobeNewswire"
+
+json_in = api.api_call("/news/query" + api_params)
+print_b(json.dumps(json_in, indent=4))
+
+for article in json_in['news']:
+    print_b(" FETCH LINK " + article['link'])
+    update = yfetch_process_news(api, article)
+
+    if update:
+        # Api expects a list of news articles, we can batch later the calls
+        js_dict = {'news': [update]}
+
+        print(json.dumps(js_dict, indent=4))
+        res = api.api_call("/news/update", data=js_dict)
+
+        if not res:
+            print_e(" FAILED COMMUNICATING WITH API ")
+
+        elif res['status'] == "error":
+            print_e(" API ERROR " + res['error_msg'])
+
+        elif res['status'] != "success":
+            print_r(json.dumps(res, indent=4))
+            print_e(" FAILED UPDATING ")
+
+        else:
+            print_g(" UPDATE SUCCESSFUL ")
+
+print_b(" FETCH FINISHED ")
