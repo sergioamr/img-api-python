@@ -1,8 +1,10 @@
+import os
 import json
 import requests
 
 from imgapi.version import __version__
 from .tools import generate_file_md5
+
 
 class ImgAPI():
     user = None
@@ -19,6 +21,35 @@ class ImgAPI():
 
         return cls._instance
 
+    def load_config(self, config_file_path):
+        """Load configuration from a JSON file."""
+        try:
+            config_file_path = os.path.abspath(config_file_path)
+            print(" LOADING CONFIG -> " + config_file_path)
+
+            with open(config_file_path, 'r') as file:
+                config_data = json.load(file)
+
+            # Update attributes based on the loaded config
+            for key, value in config_data.items():
+                setattr(self, key, value)
+
+            print("Configuration loaded successfully from:", config_file_path)
+        except (FileNotFoundError, json.JSONDecodeError) as e:
+            print(f"Error loading configuration: {e}")
+            raise
+
+    def setup(self, api_entry=None, props=None, config_file=None):
+        """Set up the API with either direct parameters or from a config file."""
+        if config_file:
+            self.load_config(config_file)
+        else:
+            self.api_entry = api_entry
+            self.props = props or {}
+
+            if 'token' in self.props:
+                self.token = self.props['token']
+
     def get_api_url(self, url):
         api_url = self.api_entry + url
         if not self.token:
@@ -31,13 +62,6 @@ class ImgAPI():
 
         api_url += "key=" + self.token
         return api_url
-
-    def setup(self, api_entry, props={}):
-        self.props = props
-        self.api_entry = api_entry
-
-        if 'token' in props:
-            self.token = props.token
 
     def api_call(self, url, data=None):
         api_url = self.get_api_url(url)
