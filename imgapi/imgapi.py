@@ -4,6 +4,7 @@ import requests
 
 from imgapi.version import __version__
 from .tools import generate_file_md5
+from .print_tools import *
 
 
 class ImgAPI():
@@ -13,6 +14,9 @@ class ImgAPI():
 
     def __new__(cls):
         # Singleton
+        from colorama import Fore, Back, Style, init
+        init(autoreset=True)
+
         if cls._instance is None:
             print("================================")
             print(" IMGAPI Start v" + __version__)
@@ -63,7 +67,10 @@ class ImgAPI():
         api_url += "key=" + self.token
         return api_url
 
-    def api_call(self, url, data=None):
+    def api_call(self, url, data=None, test=False):
+        if test:
+            print(" LOADING => " + url)
+
         api_url = self.get_api_url(url)
         try:
             if data:
@@ -75,7 +82,39 @@ class ImgAPI():
             print(" Failed on request ")
             raise e
 
-        return r.json()
+        if not r:
+            print_e(" Failed fetching => " + url)
+            return None
+
+        try:
+            return r.json()
+        except Exception as e:
+            print_exception(e, "CRASHED LOADING FROM API")
+
+        return None
+
+    def check_result(self, res, expected_state = "success", test=False):
+        if not res:
+            print_e(" FAILED COMMUNICATING WITH API ")
+            if test: exit()
+            return False
+
+        if res['status'] == "error":
+            print_e(" API ERROR " + res['error_msg'])
+            if test: exit()
+            return False
+
+        if res['status'] != expected_state:
+            print_r(json.dumps(res, indent=4))
+            print_e(" FAILED UPDATING ")
+            if test: exit()
+            return False
+
+        print_g(" UPDATE SUCCESSFUL ")
+
+        if test:
+            print_b(json.dumps(res, indent=4))
+        return True
 
     def api_upload(self, file_paths, gallery_id=None, data_list=None):
         files = {}

@@ -13,6 +13,14 @@
             "justMyCode": true
         },
         {
+            "name": "Example Create News",
+            "type": "python",
+            "request": "launch",
+            "program": "example_create_news_article.py",
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
             "name": "Run Tests",
             "type": "python",
             "request": "launch",
