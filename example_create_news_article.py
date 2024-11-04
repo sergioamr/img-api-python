@@ -1,19 +1,7 @@
-import re
-import os
-import json
-from datetime import datetime
 from urllib.parse import quote_plus
 
 from imgapi.imgapi import ImgAPI
 from imgapi.print_tools import *
-
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service as ChromeService
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.support.wait import WebDriverWait
-from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
 
 ##############################################################################################
 
@@ -65,6 +53,7 @@ article = {
     'articles': ["We are uploading a test", "AI tell us a JOKE"],
     'related_exchange_tickers': ["NASDAQ:TOTHEMOON", "NYE:GPUTOP"],
     'source': "IMG-API-PYTHON-API",
+    'experiment': "img-api-demo-example",
     'status': "INDEXED",
 }
 
