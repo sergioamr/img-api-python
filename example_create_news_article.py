@@ -1,3 +1,6 @@
+import time
+from datetime import datetime
+
 from urllib.parse import quote_plus
 
 from imgapi.imgapi import ImgAPI
@@ -45,6 +48,8 @@ if len(json_in['news']) > 0:
 
 # Dummy article to upload
 
+unixtime = time.mktime(datetime.now().timetuple())
+
 article = {
     'link': test_url,
     'title': "THIS IS A TEST",
@@ -54,6 +59,8 @@ article = {
     'related_exchange_tickers': ["NASDAQ:TOTHEMOON", "NYE:GPUTOP"],
     'source': "IMG-API-PYTHON-API",
     'experiment': "img-api-demo-example",
+    'creation_date': unixtime,
+    'last_visited_date': unixtime,
     'status': "INDEXED",
 }
 
