@@ -20,11 +20,14 @@ api = ImgAPI()
 
 api.setup(config_file=".config.json")
 
+DEFAULT_CHROME_PATH = "./chrome/chrome/linux-128.0.6613.86/chrome-linux64/chrome"
+DEFAULT_CHROMEDRIVER_PATH = "./chrome/chromedriver-linux64/chromedriver"
+
 
 def get_webdriver():
 
-    chrome_executable_path = "./chrome/chrome/linux-128.0.6613.86/chrome-linux64/chrome"
-    chromedriver_path = "./chrome/chromedriver-linux64/chromedriver"
+    chrome_executable_path = os.environ.get("DEFAULT_CHROME_PATH", DEFAULT_CHROME_PATH)
+    chromedriver_path = os.environ.get("DEFAULT_CHROMEDRIVER_PATH", DEFAULT_CHROMEDRIVER_PATH)
 
     # Check if Chrome executable exists
     if not os.path.exists(chrome_executable_path):
