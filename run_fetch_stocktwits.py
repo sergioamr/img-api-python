@@ -1,3 +1,4 @@
+import time
 import re
 import os
 import logging as log
@@ -7,12 +8,11 @@ from datetime import datetime
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service as ChromeService
 from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.support.wait import WebDriverWait
 from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
 
 from imgapi.imgapi import ImgAPI
+from imgapi.scrapper import get_article
+from imgapi.print_tools import *
 
 
 DEFAULT_CHROME_PATH = "./chrome/chrome/linux-128.0.6613.86/chrome-linux64/chrome"
@@ -40,77 +40,53 @@ def init(api):
             log.info("Link already exists")
             continue
 
-        article = get_article(driver, link)
-        print(article)
+        print(link)
+
+        articles = [get_article(driver, link)]
+
+        unixtime = time.mktime(datetime.now().timetuple())
+
+        article = {
+            'link': link,
+            'title': "THIS IS A TEST",
+            'external_uuid': "7bb12c17-a872-3080-ae2a-b56e967f2455",
+            'publisher': "API_TEST",
+            'articles': articles,
+            'related_exchange_tickers': ["NASDAQ:TOTHEMOON", "NYE:GPUTOP"],
+            'source': "IMG-API-PYTHON-API",
+            'experiment': "img-api-demo-example",
+            'creation_date': unixtime,
+            'last_visited_date': unixtime,
+            'status': "INDEXED",
+        }
+
+        res = api.api_call("/news/create", data=article)
+        if api.check_result(res, expected_state="success"):
+            delete_article(res)
+            print_json(res)
+            print_g("================================= ")
+            print_g(" FETCH FINISHED ")
+        else:
+            print_e(" FETCH FINISHED WITH ERRORS ")
+
         break
 
     driver.close()
-    
-def get_article(driver, link):
-    driver.get(link)
 
-    try:
-        # Check first if we are in the consent page (EU)
-        current_url = driver.execute_script("return window.location.href;")
+def delete_article(article):
+    """ Example of how to delete an article
+    """
+    article_id = article['news'][0]['id']
 
-        if 'consent' in current_url:
-            print(" CONSENT URL:", current_url)
-            # We get the consent and click on it
+    print_b(" Delete news article " + article_id)
+    json_res = api.api_call("/news/rm?id=" + article_id, test=True)
 
-            accept_element = EC.element_to_be_clickable(
-                (By.CLASS_NAME, "accept-all"))
+    # Check if the API was successful, API will return state="deleted" if successful
+    if not api.check_result(json_res, expected_state="deleted"):
+        exit()
 
-            link = WebDriverWait(driver, 5).until(accept_element)
-            link.click()
-
-    except Exception as e:
-        print(e, "CRASHED READING CONSENT")
-
-    try:
-        current_url = driver.execute_script("return window.location.href;")
-        print(" URL:", current_url)
-
-        element_present = EC.presence_of_element_located(
-            (By.TAG_NAME, 'main'))
-
-        WebDriverWait(driver, 5).until(element_present)
-
-        buttons = driver.find_elements(By.TAG_NAME, "button")
-        print(f"Found {len(buttons)} buttons on the main page.")
-        for index, button in enumerate(buttons):
-            try:
-                if not button.text: continue
-                if button.get_attribute("type") == "submit": continue
-
-                cl = button.get_attribute("class")
-                print(
-                    f"Button {index + 1} Text: {button.text} {cl} "
-                )
-            except Exception as e:
-                print(e, "CRASH")
-
-        try:
-            link = driver.find_element(By.CLASS_NAME, "readmoreButtonText")
-            if link:
-                link.click()
-        except Exception as e:
-            print(" NO READ MORE BUTTON ")
-
-    except Exception as e:
-        print(e, "CRASHED")
-
-    try:
-        article = driver.find_element(By.TAG_NAME, "article")
-        article = article.text
-
-    except:
-        print("article tag not found")
-        article = ""
-        paragraphs = driver.find_elements(By.TAG_NAME, "p")
-        for paragraph in paragraphs:
-            article += paragraph.text
-
-    return article
+    print_json(json_res)
+    print_g(" Deletion was succesful ")
 
 
 def clean_article(article):
