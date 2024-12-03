@@ -1,10 +1,32 @@
+from bs4 import BeautifulSoup
+import random
 
+import requests
+from bs4 import BeautifulSoup
+
+import time
+import selenium
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.firefox.options import Options
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+
+import re
+import csv
 
 """Code below extracts article from websites"""
 
+def remove_word(word, article):
+
+    """Takes in article string as input, removes all instances of unwanted word from it"""
+
+    article = re.sub(word, " ", article)
+    return article
+
 class Barchart:
     def extract_html(self, url):
-        driver = webdriver.Firefox()
+        driver = get_webdriver()
         driver.maximize_window()
         try:
             driver.get(url)
@@ -43,8 +65,7 @@ class Benzinga:
         raw_article = soup.find_all(id = "article-body")
         for paragraph in raw_article:
             article += paragraph.get_text()
-        av = AlphaVantage()
-        article = av.remove_word("\xa0", article)
+        article = remove_word("\xa0", article)
         return article
 
 class Fast_Company:
@@ -93,14 +114,7 @@ class IBD:
             return article.get_text()
         else:
             return ""
-    
-    def remove_word(self, text, word):
-
-        """Takes in article string as input, removes all instances of \n from it"""
-
-        article = re.sub(word, "", text)
-        return article  
-    
+        
 
     def get_header(self, article_soup):
         author = article_soup[0].find(class_ = "authors-links")
@@ -163,7 +177,7 @@ class IBD:
             article.append(paragraph+"\n")
         
         article = "\n".join(article)
-        article = self.remove_word(article, "\xa0")
+        article = remove_word(article, "\xa0")
         return article
 
 
@@ -236,13 +250,12 @@ class Investopedia:
 
 
         parsed_article = "\n".join(parsed_article)
-        gn2 = Google()
-        parsed_article = gn2.remove_word("TradingView", parsed_article)
+        parsed_article = remove_word("TradingView", parsed_article)
         return parsed_article
 
 class Markets:
     def extract_html(self, url):
-        driver = webdriver.Firefox()
+        driver = get_webdriver()
         driver.maximize_window()
         try:
             driver.get(url)
@@ -267,11 +280,10 @@ class Markets:
 
 class Marketbeat:
     def extract_html(self, url):
-        driver = webdriver.Firefox()
+        driver = get_webdriver()
         driver.get(url)
         time.sleep(5)
         
-        #handle notification
         try:
             alert = driver.find_element(By.XPATH, "//button[contains(text(), 'Always Block')]").click()
             time.sleep(2)
@@ -346,7 +358,7 @@ class Proactive_Investors:
         return article
 
 class Reuters:
-    def extract_reuters(self, html):
+    def extract_article(self, html):
         soup = BeautifulSoup(html, "html.parser")
         article = soup.find("article").get_text()
         return article
@@ -365,7 +377,7 @@ class The_Street:
 
 class TipRanks:
     def extract_html(self, url):
-        driver = webdriver.Firefox()
+        driver = get_webdriver()
         driver.maximize_window()
         try:
             driver.get(url)
@@ -394,8 +406,8 @@ class TipRanks:
                 continue
             processed_article.append(text)
         processed_article = "\n".join(processed_article)
-        g = Google()
-        parsed_article = g.remove_word(f"See more {ticker} analyst ratings\n", processed_article)
+        
+        parsed_article = remove_word(f"See more {ticker} analyst ratings\n", processed_article)
         return parsed_article
 
 class Tokenist:
@@ -454,10 +466,10 @@ class WS_247:
                 break
             parsed_article.append(paragraph+"\n")
 
-        gn2 = Google()
+        
         parsed_article = "\n".join(parsed_article)
         to_remove = ["\xa0", "Wikimedia Commons"]
         for word in to_remove:
-            parsed_article = gn2.remove_word(word, parsed_article)
+            parsed_article = remove_word(word, parsed_article)
         return parsed_article
                

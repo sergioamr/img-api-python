@@ -1,17 +1,11 @@
-def get_google_news(db_ticker):
-    
-    google_publishers = ["24/7 Wall St.","Barchart", "Benzinga", "Fast Company", "Forbes", "ForexLive", "Fortune", "FXStreet",
-                                "Insider Monkey", "Investing.com", "Investopedia", "Investor's Business Daily", "MarketBeat",
-                                "Markets.com", "Marketscreener.com", "MoneyCheck", "Nasdaq", "Proactive Investors USA", "Reuters",
-                                "StockTitan", "TipRanks", "TradingView", "Watcher Guru"]
-    ticker = db_ticker.ticker    
-    news = []
-    gn = GoogleNews()
-    search = gn.search(f"{ticker}")
-    for item in search["entries"]:
-        if item["source"]["title"] in google_publishers:
-            news.append(item)
-    return news
+import datetime
+import feedparser
+from bs4 import BeautifulSoup
+import urllib
+from dateparser import parse as parse_date
+import requests
+
+
 
 class GoogleNews:
     """Code for news discovery and parsing newsfeed"""

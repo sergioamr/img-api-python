@@ -2,6 +2,7 @@ import re
 import os
 import json
 from datetime import datetime
+from heapq import *
 
 from imgapi.imgapi import ImgAPI
 from colorama import Fore, Back, Style, init
@@ -13,15 +14,18 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.wait import WebDriverWait
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
-from alpha_vantage import *
-from google import *
+
+from thelpers import *
+from alpha_vantage.news_extractor_helpers import *
+from alpha_vantage.download_news import *
+from google.download_news import *
+from google.news_extractor_helpers import *
 
 init(autoreset=True)
 
 api = ImgAPI()
 
-api.setup(config_file=".config.json")
-
+api.setup(config_file="config.json")
 
 def get_webdriver():
 
@@ -49,10 +53,21 @@ def get_webdriver():
     # Step 2: Initialize the Chrome WebDriver
 
     # We have the driver in our system
+    
     driver = webdriver.Chrome(service=ChromeService(chromedriver_path),
                               options=chrome_options)
-
     return driver
+
+def extract_html(url):
+    #try:
+    driver = get_webdriver()
+    driver.get(url)
+    html = driver.page_source
+    driver.quit()
+    return [1, html]
+    #except Exception as e:
+    #    print_r(f"Unable to extract html {url} because {e}")
+     #   return [0, ""]
 
 
 def print_b(text):
@@ -185,232 +200,182 @@ def yfetch_process_news(api, item):
 
     if len(articles) > 0:
         item['articles'] = articles
-        item['state'] = "INDEXED"
+        item['status'] = "INDEXED"
     else:
-        item['state'] = "ERROR: ARTICLES NOT FOUND"
+        item['status'] = "ERROR: ARTICLES NOT FOUND"
 
     return item
 
 
-def av_process_news(api, item):
-    print_b("NEWS -> " + item["link"])
+#############################################################################################
+def yahoo_pipeline():
+    api_params = "?status=WAITING_INDEX&limit=1&source=YFINANCE&publisher=GlobeNewswire"
 
-    data_folder = item.get_data_folder()
-    print_b("DATA FOLDER: " + data_folder)
+    json_in = api.api_call("/news/query" + api_params)
+    print_b(json.dumps(json_in, indent=4))
+
+    for article in json_in['news']:
+        print_b(" FETCH LINK " + article['link'])
+        update = yfetch_process_news(api, article)
+
+        if update:
+            # Api expects a list of news articles, we can batch later the calls
+            js_dict = {'news': [update]}
+
+            print(json.dumps(js_dict, indent=4))
+            res = api.api_call("/news/update", data=js_dict)
+
+            if not res:
+                print_e(" FAILED COMMUNICATING WITH API ")
+
+            elif res['status'] == "ERROR":
+                print_e(" API ERROR " + res['error_msg'])
+
+            elif res['status'] != "SUCCESS":
+                print_r(json.dumps(res, indent=4))
+                print_e(" FAILED UPDATING ")
+
+            else:
+                print_g(" UPDATE SUCCESSFUL ")
+
+    print_b("YFINANCE FETCH FINISHED ")
+
+
+######################## ALPHAVANTAGE
+def discover_av_news(ticker, db_ticker = None, test = True):
+    if db_ticker:
+        ticker = db_ticker.ticker
+        exchange = db_ticker.symbol
+        if exchange in ["NYSE", "NASDAQ", "NYQ", "NYE"]:
+            av_news = get_usa_news(ticker)
+    else:
+        av_news = get_usa_news(ticker)
+    return av_news
+
+#add to waiting_index
+def add_to_waiting_index(av_news):
+    
+    #av_news is a heap data structure that prioritizes the most relevant articles for processing
+    while av_news:
+        relevance, news = heappop(av_news)
+
+        uuid = generate_uuid(news)
+        api_params = f"?external_uuid={uuid}&source=ALPHAVANTAGE"
+        found = api.api_call("/news/query" + api_params)
+        
+        #if article already in database, continue
+        if len(found["news"]) > 0:
+            print("news found", found["news"])
+            continue
+
+        related_exchange_tickers = []
+        for ticker in news["ticker_sentiment"]:
+            if float(ticker["relevance_score"]) > 0.29:
+                #format tickers into sergio's format
+                related_exchange_tickers.append(format_ticker(ticker["ticker"]))
+    
+        article = {
+                "articles": [],
+                "creation_date": parse_av_dates(news["time_published"]),
+                "external_uuid": uuid,
+                "link": news["url"],
+                "publisher": news["source"],
+                "related_exchange_tickers": related_exchange_tickers,
+                "source": "ALPHAVANTAGE",
+                "status": "WAITING_INDEX",
+            "title": news["title"]
+            }
+        
+        res = api.api_call("/news/create", data = article)
+        print("creating article", article, res)
+
+def av_process_news(api, item):
+
+    """Function to process news based on website. extract_html & extract_zenrows_html is in run_fetch.py.
+    The other functions are in alpha_vantage/news_extractor_helpers.py.
+    """
+
+    print_g("AV NEWS -> " + item["link"])
     article = ""
-    #where do i put the code for downloading & discovery?
-    #code in alphavantage/helpers.py
+
+    #where do i put the code for discovery, downloading & indexing into database?
     if item["publisher"] == "CNBC":
-        success, html = extract_html(item["url"])
+        success, html = extract_html(item["link"])
         cnbc = CNBC()
         article = cnbc.extract_article(html)
 
     elif item["publisher"] == "Money Morning":
-        success, html = extract_html(item["url"])
+        success, html = extract_html(item["link"])
         money_morning = Money_Morning()
         article = money_morning.extract_article(html)
 
     elif item["publisher"] == "Motley Fool":
-        success, article = extract_html(item["url"])
+        success, article = extract_html(item["link"])
         motley = Motley()
         article = motley.parse_motley(article)
 
     elif item["publisher"]  == "South China Morning Post":
-        success, html = extract_html(news["url"])
+        success, html = extract_html(item["link"])
         scmp = SCMP()
         article = scmp.extract_article(html)
 
     elif item["publisher"] == "Zacks Commentary":
-        success, html = extract_zacks_html(news["url"])
+        
         zacks = Zacks()
+        success, html = zacks.extract_html(item["link"])
         article = zacks.extract_article(html)
 
     if article != "":
-        item['articles'] = articles
-        item['state'] = "INDEXED"
+        item["articles"] = [article]
+        item['status'] = "INDEXED"
     else:
-        item['state'] = "ERROR: ARTICLES NOT FOUND"
-
-    return item
-
-def google_process_news(api, item):
-    print("Currently extracting", result["source"]["title"])
-    print(result["link"])
-    article = ""
-    if item["publisher"] == "24/7 Wall St.":
-        ws_247 = WS_247()
-        success, html = extract_html(result["link"])
-        article = ws_247.parse_article(html)
-        to_process = True
-
-    elif item["publisher"] == "Barchart":
-        try:
-            barchart = Barchart()
-            success, html = barchart.extract_html(result["link"])
-            article = barchart.parse_article(html)
-        except Exception as e:
-            print("Failed to extract Barchart")
-            article = ""
-
-    elif item["publisher"] == "Benzinga":
-        benzinga = Benzinga()
-        success, html = extract_zenrows_html(result["link"])
-        article = benzinga.extract_article(html)
-    
-    elif item["publisher"] == "Fast Company":
-        fast_company = Fast_Company()
-        success, html = extract_html(result["link"])
-        article = fast_company.extract_article(html)
-    
-    elif item["publisher"] == "Forbes":
-        success, html = extract_html(result["link"])
-        forbes = Forbes()
-        article = forbes.extract_article(html)
-    
-    elif item["publisher"] == "ForexLive":
-        success, html = extract_html(result["link"])
-        forex_live = Forex_Live()
-        article = forex_live.extract_article(html)
-    
-    elif item["publisher"] == "Fortune":
-        success, html = extract_html(result["link"])
-        fortune = Fortune()
-        article = fortune.extract_article(html)
-    
-    elif item["publisher"] == "FXStreet":
-        success, html = extract_html(result["link"])
-        fx_street = FX_Street()
-        article = fx_street.extract_article(html)
-    
-    elif item["publisher"] == "Insider Monkey":
-        insider_monkey = Insider_Monkey()
-        success, html = extract_html(result["link"])
-        article = insider_monkey.extract_article(html)
-    
-    elif item["publisher"] == "Investing.com":
-        investing = Investing()
-        success, html = extract_zenrows_html(result["link"])
-        article = investing.extract_article(html)
-    
-    elif item["publisher"] == "InvestmentNews":
-        investment_news = Investment_News()
-        success, html = investment_news.extract_html(result["link"])
-        article = investment_news.extract_article(html)
-        
-    elif item["publisher"] == "Investopedia":
-        success, html = extract_html(result["link"])
-        investopedia = Investopedia()
-        article = investopedia.parse_article(html)
-    
-    elif item["publisher"] == "Investor's Business Daily":
-        ibd = IBD()
-        success, html = extract_zenrows_html(result["link"])
-        article = ibd.extract_article(html)
-    
-    elif item["publisher"] == "MarketBeat":
-        marketbeat = Marketbeat()
-        success, html = marketbeat.extract_html(result["link"])
-        article = marketbeat.extract_article(html)
-    
-    elif item["publisher"] == "Markets.com":
-        markets = Markets()
-        success, html = markets.extract_html(result["link"])
-        article = markets.extract_article(html)
-    
-    elif item["publisher"] == "Marketscreener.com":
-        market_screener = Market_screener()
-        success, html = extract_html(result["link"])
-        article = market_screener.extract_article(html)
-    
-    elif item["publisher"] == "MoneyCheck":
-        money_check = Money_Check()
-        success, html = extract_html(result["link"])
-        article = money_check.extract_article(html)
-    
-    elif item["publisher"] == "Nasdaq":
-        nasdaq = NASDAQ()
-        success, html = extract_html(result["link"])
-        article = nasdaq.extract_article(html)
-    
-    elif item["publisher"] == "Proactive Investors USA":
-        proactive_investors = Proactive_Investors()
-        success, html = extract_html(result["link"])
-        article = proactive_investors.extract_article(html)
-    
-    elif item["publisher"] == "Reuters":
-        reuters = Reuters()
-        success, html = extract_html(result["link"])
-        article = reuters.extract_article(html)
-    
-    elif item["publisher"] == "TheStreet":
-        the_street = The_Street()
-        success, html = extract_html(result["link"])
-        article = the_street.extract_article(html)
-    
-    elif item["publisher"] == "StockTitan":
-        stock_titan = Stock_Titan()
-        success, html = extract_html(result["link"])
-        article = stock_titan.extract_article(html)
-            
-    elif item["publisher"] == "TipRanks":
-        tipranks = TipRanks()
-        success, html = tipranks.extract_html(result["link"])
-        article = tipranks.parse_article(html, ticker)
-    
-    elif item["publisher"] == "TradingView":
-        tokenist = Tokenist()
-        success, html = extract_html(result["link"])
-        article = tokenist.extract_article(html, ticker)
-    
-    elif item["publisher"] == "TradingView":
-        trading_view = Trading_View()
-        success, html = extract_html(result["link"])
-        article = trading_view.extract_article(html, ticker)
-        
-    elif item["publisher"] == "Watcher Guru":
-        wg = WatcherGuru()
-        success, html = extract_html(result["link"])
-        article = wg.parse_article(html)
-
-    if len(articles) > 0:
-        item['articles'] = article
-        item['state'] = "INDEXED"
-    else:
-        item['state'] = "ERROR: ARTICLES NOT FOUND"
+        item['status'] = "ERROR: ARTICLES NOT FOUND"
 
     return item
 
 
+############################################
+def av_pipeline():
+    av_news = discover_av_news("NVDA")
+    add_to_waiting_index(av_news)
 
-##############################################################################################
+    api_params = "?status=INDEX_START&source=ALPHAVANTAGE"
+    json_in = api.api_call("/news/query" + api_params)
+    print_b(json.dumps(json_in, indent=4))
 
-api_params = "?status=WAITING_INDEX&limit=1&source=YFINANCE&publisher=GlobeNewswire"
 
-json_in = api.api_call("/news/query" + api_params)
-print_b(json.dumps(json_in, indent=4))
+    for article in json_in['news']:
 
-for article in json_in['news']:
-    print_b(" FETCH LINK " + article['link'])
-    update = yfetch_process_news(api, article)
+        #article already in system
+        if len(article["articles"]) > 0:
+            continue
+        
+        print_b(" FETCH LINK " + article['link'])
+        update = av_process_news(api, article)
+        
+        if update:
+            # Api expects a list of news articles, we can batch later the calls
+            js_dict = {'news': [update]}
 
-    if update:
-        # Api expects a list of news articles, we can batch later the calls
-        js_dict = {'news': [update]}
+            #fix update bugs
+            res = api.api_call("/news/update", data=js_dict)
+            print("update", update)
+            print("js_dict", js_dict)
+            print("res here", res)
+            if not res:
+                print_e(" FAILED COMMUNICATING WITH API ")
 
-        print(json.dumps(js_dict, indent=4))
-        res = api.api_call("/news/update", data=js_dict)
+            elif res['status'] == "error":
+                print_e(" API ERROR " + res['error_msg'])
 
-        if not res:
-            print_e(" FAILED COMMUNICATING WITH API ")
+            elif res['status'] != "success":
+                print_r(json.dumps(res, indent=4))
+                print_e(" FAILED UPDATING ")
 
-        elif res['status'] == "error":
-            print_e(" API ERROR " + res['error_msg'])
+            else:
+                print_g(" UPDATE SUCCESSFUL ")
 
-        elif res['status'] != "success":
-            print_r(json.dumps(res, indent=4))
-            print_e(" FAILED UPDATING ")
+    print_b("ALPHAVANTAGE FETCH FINISHED ")
 
-        else:
-            print_g(" UPDATE SUCCESSFUL ")
+av_pipeline()
 
-print_b(" FETCH FINISHED ")

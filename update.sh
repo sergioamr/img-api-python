@@ -6,7 +6,7 @@ if [ ! -d ".venv" ]
 then
    echo "INSTALLING VENV "
    python3 -m venv .venv
-fi
+
 
 . .venv/bin/activate
 

@@ -1,32 +1,54 @@
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.wait import WebDriverWait
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.service import Service as ChromeService
+from selenium.webdriver.chrome.options import Options
+
+from bs4 import BeautifulSoup
+import re
+import time
+import os
+
+def get_webdriver():
+
+    chrome_executable_path = "./chrome/chrome/linux-128.0.6613.86/chrome-linux64/chrome"
+    chromedriver_path = "./chrome/chromedriver-linux64/chromedriver"
+
+    # Check if Chrome executable exists
+    if not os.path.exists(chrome_executable_path):
+        raise FileNotFoundError(
+            f"Chrome executable not found at {chrome_executable_path}")
+
+    # Check if ChromeDriver exists
+    if not os.path.exists(chromedriver_path):
+        raise FileNotFoundError(
+            f"ChromeDriver not found at {chromedriver_path}")
+
+    # Step 1: Setup Chrome options
+    chrome_options = Options()
+    chrome_options.binary_location = chrome_executable_path  # Specify the location of the Chrome binary
+
+    chrome_options.add_argument("--headless")
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--window-size=1920,1200")
+
+    # Step 2: Initialize the Chrome WebDriver
+
+    # We have the driver in our system
+    driver = webdriver.Chrome(service=ChromeService(chromedriver_path),
+                              options=chrome_options)
+
+    return driver
+
+
 def remove_word(word, article):
 
-        """Takes in article string as input, removes all instances of unwanted word from it"""
+    """Takes in article string as input, removes all instances of unwanted word from it"""
 
-        article = re.sub(word, " ", article)
-        return article
+    article = re.sub(word, " ", article)
+    return article
 
-def extract_html(url):
-    driver = webdriver.Chrome()
-    try:
-        driver.get(url)
-    except:
-        return [0, ""]
-    sleep_time = random.uniform(3,8)
-    time.sleep(sleep_time)
-    html = driver.page_source
-    driver.close()
-    return [1, html]
-
-def extract_zenrows_html(url):
-
-    client = ZenRowsClient("e8c73f9d4eaa246fec67e9b15bea42aad7aa09d0")
-    try:
-        response = client.get(url)
-        html = response.text
-    except Exception as e:
-        print(e)
-        return [0, ""]
-    return [1, html]
 
 class CNBC:
     def extract_article(self, html):
@@ -36,8 +58,7 @@ class CNBC:
         for raw_article in raw_articles:
             article.append(raw_article.get_text()+"\n")
         article = "\n".join(article)
-        av = AlphaVantage()
-        article = av.remove_word("\xa0", article)
+        article = remove_word("\xa0", article)
         article = self.clean_links(html, article)
         return article
 
@@ -51,9 +72,8 @@ class CNBC:
         for c in rc:
             to_remove.append(c.get_text())
 
-        av = AlphaVantage()
         for sentence in to_remove:
-            article = av.remove_word(sentence, article)
+            article = remove_word(sentence, article)
         return article
 
 class Money_Morning:
@@ -127,6 +147,23 @@ class SCMP:
         return article
 
 class Zacks:
+    def extract_html(self, link):
+        driver = get_webdriver()
+        try:
+            driver.get(link)
+            element = EC.presence_of_element_located(
+                (By.CLASS_NAME, "show_article"))
+
+            WebDriverWait(driver, 5).until(element)
+            element.click()
+        except Exception as e:
+            print("Error extracting news", e)
+            return [0, ""]
+        finally:
+            html = driver.page_source
+            driver.close()
+            return [1, html]
+
     def extract_article(self, html):
         soup = BeautifulSoup(html, "html.parser")
         raw_articles = soup.find_all("article")
