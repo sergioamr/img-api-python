@@ -10,6 +10,8 @@ __pycache__/
 
 chrome/
 
+investing_*.json
+
 # Distribution / packaging
 .Python
 build/
