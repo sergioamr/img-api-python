@@ -1,15 +1,16 @@
+import re
+import os
+import json
+from datetime import datetime
+from heapq import *
+import asyncio
+from crawl4ai import AsyncWebCrawler
+from googlenewsdecoder import new_decoderv1
+
 from urllib.parse import quote_plus
 from imgapi.imgapi import ImgAPI
 #from imgapi.print_tools import *
 from colorama import Fore, Back, Style, init
-
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service as ChromeService
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.support.wait import WebDriverWait
-from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
 
 from thelpers import *
 from fetch.google.download_news import *
@@ -92,11 +93,22 @@ class Google_pipeline:
             }
         return news_item
 
+    def get_browser(self):
+        user_agents = [
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/104.0.5112.79 Safari/537.36",
+            "Mozilla/5.0 (Windows NT 10.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/104.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/104.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.5060.53 Safari/537.36",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/99.0.4844.84 Safari/537.36",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36"
+        ]
+        agent = random.choice(user_agents)
+        return agent
     
 
-    async def ai_crawler(link, html = False):
-        
-        async with AsyncWebCrawler(verbose=True,
+    async def ai_crawler(self, link, html = False):
+        agent = self.get_browser()
+        async with AsyncWebCrawler(verbose=True, user_agent = agent,
             headers={"Accept-Language": "en-US"}, 
             sleep_on_close =False) as crawler:
             result = await crawler.arun(
@@ -128,7 +140,7 @@ class Google_pipeline:
             news_item["articles"] = [article]
             news_item["status"] = "INDEXED"
             api.api_entry = "http://dev.gputop.com/api"
-            print(article)
+            #print(article)
             print_b(f"Creating article... -> {news_item['publisher']}")
             res = api.api_call("/news/create", data = news_item)
             
@@ -136,6 +148,26 @@ class Google_pipeline:
             news_item["status"] = "ERROR: ARTICLES NOT FOUND"
 
         return news_item
+
+    def delete_news(self, query):
+        api.api_entry = "https://headingtomars.com/api"
+        data = api.api_call("/news/query" + query)
+        for item in data["news"]:
+            article_id = item["id"]
+            print_b(" Delete news article " + article_id)
+            json_res = api.api_call("/news/rm?id=" + article_id)
+
+    def delete_all_articles(self):
+        api_params = f"?experiment=ordersofmagnitude&source=GOOGLE"
+        api.api_entry = "http://dev.gputop.com/api"
+        data = api.api_call("/news/query" + api_params)
+        for item in data["news"]:
+            article_id = item["id"]
+            print_b(" Delete news article " + article_id)
+            json_res = api.api_call("/news/rm?id=" + article_id)
+
+        print_g(" Deletion was succesful ")
+
 
     def pipeline_test(self):
         api_params = f"/index/batch/get_tickers"
@@ -156,3 +188,7 @@ class Google_pipeline:
                         print_e(" FAILED UPDATING ")
                             
         print_b(" FETCH FINISHED ")
+
+gp = Google_pipeline()
+#gp.delete_all_articles()
+gp.pipeline_test()
