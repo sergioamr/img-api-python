@@ -2,9 +2,9 @@ import re
 import os
 import json
 from datetime import datetime
-from heapq import *
 
 from imgapi.imgapi import ImgAPI
+from imgapi.print_tools import *
 from colorama import Fore, Back, Style, init
 
 from selenium import webdriver
@@ -15,17 +15,12 @@ from selenium.webdriver.support.wait import WebDriverWait
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 
-from thelpers import *
-from alpha_vantage.news_extractor_helpers import *
-from alpha_vantage.download_news import *
-from google.download_news import *
-from google.news_extractor_helpers import *
-
 init(autoreset=True)
 
 api = ImgAPI()
 
 api.setup(config_file="config.json")
+
 
 def get_webdriver():
 
@@ -53,47 +48,11 @@ def get_webdriver():
     # Step 2: Initialize the Chrome WebDriver
 
     # We have the driver in our system
-    
     driver = webdriver.Chrome(service=ChromeService(chromedriver_path),
                               options=chrome_options)
+
     return driver
 
-def extract_html(url):
-    #try:
-    driver = get_webdriver()
-    driver.get(url)
-    html = driver.page_source
-    driver.quit()
-    return [1, html]
-    #except Exception as e:
-    #    print_r(f"Unable to extract html {url} because {e}")
-     #   return [0, ""]
-
-
-def print_b(text):
-    print(Fore.BLUE + text)
-
-
-def print_g(text):
-    print(Fore.GREEN + text)
-
-
-def print_r(text):
-    print(Fore.RED + text)
-
-
-def print_e(text):
-    print(Back.RED +
-          "************************************************************")
-    print(Back.RED + text)
-    print(Back.RED +
-          "************************************************************")
-
-
-def print_exception(err, text=''):
-    import traceback
-    print(Fore.RED + str(err))
-    traceback.print_tb(err.__traceback__)
 
 
 def clean_article(article):
@@ -200,182 +159,42 @@ def yfetch_process_news(api, item):
 
     if len(articles) > 0:
         item['articles'] = articles
-        item['status'] = "INDEXED"
+        item['state'] = "INDEXED"
     else:
-        item['status'] = "ERROR: ARTICLES NOT FOUND"
+        item['state'] = "ERROR: ARTICLES NOT FOUND"
 
     return item
 
 
-#############################################################################################
-def yahoo_pipeline():
-    api_params = "?status=WAITING_INDEX&limit=1&source=YFINANCE&publisher=GlobeNewswire"
+##############################################################################################
 
-    json_in = api.api_call("/news/query" + api_params)
-    print_b(json.dumps(json_in, indent=4))
+api_params = "?status=WAITING_INDEX&limit=1&source=YFINANCE&publisher=GlobeNewswire"
 
-    for article in json_in['news']:
-        print_b(" FETCH LINK " + article['link'])
-        update = yfetch_process_news(api, article)
+json_in = api.api_call("/news/query" + api_params)
+print_b(json.dumps(json_in, indent=4))
 
-        if update:
-            # Api expects a list of news articles, we can batch later the calls
-            js_dict = {'news': [update]}
+for article in json_in['news']:
+    print_b(" FETCH LINK " + article['link'])
+    update = yfetch_process_news(api, article)
 
-            print(json.dumps(js_dict, indent=4))
-            res = api.api_call("/news/update", data=js_dict)
+    if update:
+        # Api expects a list of news articles, we can batch later the calls
+        js_dict = {'news': [update]}
 
-            if not res:
-                print_e(" FAILED COMMUNICATING WITH API ")
+        print(json.dumps(js_dict, indent=4))
+        res = api.api_call("/news/update", data=js_dict)
 
-            elif res['status'] == "ERROR":
-                print_e(" API ERROR " + res['error_msg'])
+        if not res:
+            print_e(" FAILED COMMUNICATING WITH API ")
 
-            elif res['status'] != "SUCCESS":
-                print_r(json.dumps(res, indent=4))
-                print_e(" FAILED UPDATING ")
+        elif res['status'] == "error":
+            print_e(" API ERROR " + res['error_msg'])
 
-            else:
-                print_g(" UPDATE SUCCESSFUL ")
+        elif res['status'] != "success":
+            print_r(json.dumps(res, indent=4))
+            print_e(" FAILED UPDATING ")
 
-    print_b("YFINANCE FETCH FINISHED ")
+        else:
+            print_g(" UPDATE SUCCESSFUL ")
 
-
-######################## ALPHAVANTAGE
-def discover_av_news(ticker, db_ticker = None, test = True):
-    if db_ticker:
-        ticker = db_ticker.ticker
-        exchange = db_ticker.symbol
-        if exchange in ["NYSE", "NASDAQ", "NYQ", "NYE"]:
-            av_news = get_usa_news(ticker)
-    else:
-        av_news = get_usa_news(ticker)
-    return av_news
-
-#add to waiting_index
-def add_to_waiting_index(av_news):
-    
-    #av_news is a heap data structure that prioritizes the most relevant articles for processing
-    while av_news:
-        relevance, news = heappop(av_news)
-
-        uuid = generate_uuid(news)
-        api_params = f"?external_uuid={uuid}&source=ALPHAVANTAGE"
-        found = api.api_call("/news/query" + api_params)
-        
-        #if article already in database, continue
-        if len(found["news"]) > 0:
-            print("news found", found["news"])
-            continue
-
-        related_exchange_tickers = []
-        for ticker in news["ticker_sentiment"]:
-            if float(ticker["relevance_score"]) > 0.29:
-                #format tickers into sergio's format
-                related_exchange_tickers.append(format_ticker(ticker["ticker"]))
-    
-        article = {
-                "articles": [],
-                "creation_date": parse_av_dates(news["time_published"]),
-                "external_uuid": uuid,
-                "link": news["url"],
-                "publisher": news["source"],
-                "related_exchange_tickers": related_exchange_tickers,
-                "source": "ALPHAVANTAGE",
-                "status": "WAITING_INDEX",
-            "title": news["title"]
-            }
-        
-        res = api.api_call("/news/create", data = article)
-        print("creating article", article, res)
-
-def av_process_news(api, item):
-
-    """Function to process news based on website. extract_html & extract_zenrows_html is in run_fetch.py.
-    The other functions are in alpha_vantage/news_extractor_helpers.py.
-    """
-
-    print_g("AV NEWS -> " + item["link"])
-    article = ""
-
-    #where do i put the code for discovery, downloading & indexing into database?
-    if item["publisher"] == "CNBC":
-        success, html = extract_html(item["link"])
-        cnbc = CNBC()
-        article = cnbc.extract_article(html)
-
-    elif item["publisher"] == "Money Morning":
-        success, html = extract_html(item["link"])
-        money_morning = Money_Morning()
-        article = money_morning.extract_article(html)
-
-    elif item["publisher"] == "Motley Fool":
-        success, article = extract_html(item["link"])
-        motley = Motley()
-        article = motley.parse_motley(article)
-
-    elif item["publisher"]  == "South China Morning Post":
-        success, html = extract_html(item["link"])
-        scmp = SCMP()
-        article = scmp.extract_article(html)
-
-    elif item["publisher"] == "Zacks Commentary":
-        
-        zacks = Zacks()
-        success, html = zacks.extract_html(item["link"])
-        article = zacks.extract_article(html)
-
-    if article != "":
-        item["articles"] = [article]
-        item['status'] = "INDEXED"
-    else:
-        item['status'] = "ERROR: ARTICLES NOT FOUND"
-
-    return item
-
-
-############################################
-def av_pipeline():
-    av_news = discover_av_news("NVDA")
-    add_to_waiting_index(av_news)
-
-    api_params = "?status=INDEX_START&source=ALPHAVANTAGE"
-    json_in = api.api_call("/news/query" + api_params)
-    print_b(json.dumps(json_in, indent=4))
-
-
-    for article in json_in['news']:
-
-        #article already in system
-        if len(article["articles"]) > 0:
-            continue
-        
-        print_b(" FETCH LINK " + article['link'])
-        update = av_process_news(api, article)
-        
-        if update:
-            # Api expects a list of news articles, we can batch later the calls
-            js_dict = {'news': [update]}
-
-            #fix update bugs
-            res = api.api_call("/news/update", data=js_dict)
-            print("update", update)
-            print("js_dict", js_dict)
-            print("res here", res)
-            if not res:
-                print_e(" FAILED COMMUNICATING WITH API ")
-
-            elif res['status'] == "error":
-                print_e(" API ERROR " + res['error_msg'])
-
-            elif res['status'] != "success":
-                print_r(json.dumps(res, indent=4))
-                print_e(" FAILED UPDATING ")
-
-            else:
-                print_g(" UPDATE SUCCESSFUL ")
-
-    print_b("ALPHAVANTAGE FETCH FINISHED ")
-
-av_pipeline()
-
+print_b(" FETCH FINISHED ")
