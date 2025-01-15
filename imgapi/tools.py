@@ -4,6 +4,36 @@ import hashlib
 import traceback
 import datetime
 
+from colorama import Fore, Back, Style, init
+
+init(autoreset=True)
+
+
+def print_b(text):
+    print(Fore.BLUE + text)
+
+
+def print_g(text):
+    print(Fore.GREEN + text)
+
+
+def print_r(text):
+    print(Fore.RED + text)
+
+
+def print_e(text):
+    print(Back.RED +
+          "************************************************************")
+    print(Back.RED + text)
+    print(Back.RED +
+          "************************************************************")
+
+
+def print_exception(err, text=''):
+    import traceback
+    print(Fore.RED + str(err))
+    traceback.print_tb(err.__traceback__)
+
 
 def file_as_blockiter(afile, blocksize=65536):
     with afile:
@@ -64,3 +94,10 @@ def get_timestamp():
     d = datetime.datetime.now()
     unixtime = time.mktime(d.timetuple())
     return int(unixtime)
+
+
+def clean_article(article):
+    """Cleans \n character from article"""
+
+    article = re.sub("\n", " ", article)
+    return article

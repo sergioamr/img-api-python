@@ -10,6 +10,7 @@ __pycache__/
 
 chrome/
 
+DATA
 investing_*.json
 
 # Distribution / packaging
