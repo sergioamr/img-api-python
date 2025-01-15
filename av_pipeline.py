@@ -46,60 +46,52 @@ def print_exception(err, text=''):
     traceback.print_tb(err.__traceback__)
 
 class av_pipeline:
-    def discover_av_news(self, ticker, api_key):
+    def discover_news(self, ticker, api_key):
 
         """Finds news by stock ticker and sorts them by relevance."""
 
-        news = []
+        news_arr = []
         url = f"https://www.alphavantage.co/query?function=NEWS_SENTIMENT&ticker={ticker}&apikey={api_key}"
         r = requests.get(url)
         data = r.json()
-        #print(data)
         
-        for news_item in data["feed"]:
-            if news_item["source"] in ["CNBC", "Money Morning", "Motley Fool", "South China Morning Post", "Zacks Commentary"]:
-                relevance_score = get_relevance_score(news_item, ticker)
+        for item in data["feed"]:
+            if item["source"] in ["CNBC", "Money Morning", "Motley Fool", "South China Morning Post", "Zacks Commentary"]:
+                if self.is_indexed(item):
+                    continue
+                relevance_score = get_relevance_score(item, ticker)
                 if relevance_score > 0.20:
-                    print(news, -relevance_score, news_item)
-                    heappush(news, (-relevance_score, news_item))
-        today = date.today()
-        folder_path = os.path.join("cache", str(today))
-        if not os.path.exists(folder_path):
-            os.makedirs(folder_path)
-        
-        with open(f"cache/{today}/{ticker}", "w") as f:
-            json.dump(news, f, indent= 4)
-        return news
+                    news_item = self.prepare_schema(item)
+                    heappush(news_arr, (-relevance_score, news_item))
+        self.cache_news(news_arr, ticker)
+        return news_arr
 
-    def in_database(self, item, uuid):
-        """Checks if news is already in database. Returns True if in database,
+    def is_indexed(self, item):
+
+        """Using an API, checks if the news is in the database. Returns True if it is,
         False otherwise."""
 
+        uuid = generate_uuid(item)
         api_params = f"?external_uuid={uuid}&source=ALPHAVANTAGE"
         api.api_entry = "http://dev.gputop.com/api"
         found = api.api_call("/news/query" + api_params)
         
-        #if article already in database, continue
         if len(found["news"]) > 0:
             return True    
         else:
             return False
 
-    def add_to_waiting_index(self, item, uuid):
-
-        """Takes a news item, prepares its data schema, and adds it to the database."""
-
-        print_g(f"Currently adding to database -> {item}")
-
+    def prepare_schema(self, item):
         related_exchange_tickers = []
         for ticker in item["ticker_sentiment"]:
-            if float(ticker["relevance_score"]) > 0.29:
+            if float(ticker["relevance_score"]) > 0.20:
                 related_exchange_tickers.append(format_ticker(ticker["ticker"]))
         
-        article = {
+        news_item = {
                 "articles": [],
                 "creation_date": parse_av_dates(item["time_published"]),
-                "external_uuid": uuid,
+                "experiment": "ordersofmagnitude150125",
+                "external_uuid": generate_uuid(item),
                 "link": item["url"],
                 "publisher": item["source"],
                 "related_exchange_tickers": related_exchange_tickers,
@@ -107,121 +99,123 @@ class av_pipeline:
                 "status": "WAITING_INDEX",
             "title": item["title"]
             }
+        return news_item
+
+    def cache_news(self, news_arr, ticker):
+        today = date.today()
+        folder_path = os.path.join("av_cache", str(today))
+        if not os.path.exists(folder_path):
+            os.makedirs(folder_path)
         
-        api.api_entry = "http://dev.gputop.com/api"
-        res = api.api_call("/news/create", data = article)
-        print_g(f"News uploaded, {res}")
-        return article
+        with open(f"av_cache/{today}/{ticker}", "w") as f:
+            json.dump(news_arr, f, indent= 4)
 
+    def read_from_cache(self, ticker):
+        
+        """Reads data from cache and returns"""
 
+        today = date.today()
+        with open(f"av_cache/{today}/{ticker}", "r") as f:
+            data = json.load(f)
+        return data
 
-    def process_news(self, api, item):
+    def get_browser(self):
+        user_agents = [
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/104.0.5112.79 Safari/537.36",
+            "Mozilla/5.0 (Windows NT 10.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/104.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/104.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.5060.53 Safari/537.36",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/99.0.4844.84 Safari/537.36",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/70.0.3538.77 Safari/537.36"
+        ]
+        agent = random.choice(user_agents)
+        return agent
 
-        """Function to process news based on website. Subfunctions6 are in fetch/alpha_vantage/news_extractor_helpers.py.
-        """
+    async def ai_crawler(self, link):
+        agent = self.get_browser()
+        
+        async with AsyncWebCrawler(verbose=True,
+            user_agent = agent,
+            headers={"Accept-Language": "en-US"}, 
+            sleep_on_close =False) as crawler:
+            result = await crawler.arun(
+                    url=link,        
+                    magic=True)
+            return result.markdown
 
-        print_g("AV NEWS /c -> " + item["link"])
-        article = ""
+    def process_news(self, news_item):
+        article = None
 
-        fetch = News_Fetch_Helpers()
-        if item["publisher"] == "CNBC":
-            success, html = fetch.extract_html(item["link"])
-            cnbc = CNBC()
-            article = cnbc.extract_article(html)
+        if news_item["publisher"] in ["CNBC", "Money Morning", "Motley Fool", "South China Morning Post"]:
+            article = asyncio.run(self.ai_crawler(news_item["link"]))
 
-        elif item["publisher"] == "Money Morning":
-            success, html = fetch.extract_html(item["link"])
-            money_morning = Money_Morning()
-            article = money_morning.extract_article(html)
-
-        elif item["publisher"] == "Motley Fool":
-            success, article = fetch.extract_html(item["link"])
-            motley = Motley()
-            article = motley.parse_motley(article)
-
-        elif item["publisher"]  == "South China Morning Post":
-            success, html = fetch.extract_html(item["link"])
-            scmp = SCMP()
-            article = scmp.extract_article(html)
-
-        elif item["publisher"] == "Zacks Commentary":
+        elif news_item["publisher"] == "Zacks Commentary":
             zacks = Zacks()
-            success, html = zacks.extract_html(item["link"])
             article = zacks.extract_article(html)
 
-        if article != "":
-            item["articles"] = [article]
-            item['status'] = "INDEXED"
+        if article != None and article != "":
+            news_item["articles"] = [article]
+            news_item['status'] = "INDEXED"
         else:
-            item['status'] = "ERROR: ARTICLES NOT FOUND"
+            news_item['status'] = "ERROR: ARTICLES NOT FOUND"
 
-        return item
+        return news_item
 
-    def pipeline_test(self):
-        #how do you store the api_keys so that it's not on github?
-        api_keys = ["JIHXVRY5SPIH16C9", "H7YVHH7OWYL87Z8P"]
+    def get_tickers(self):
         api_params = f"/index/batch/get_tickers"
         api.api_entry = "https://headingtomars.com/api"
         data = api.api_call("/ticker" + api_params)
-        tickers = data["tickers"]
-        i = 0
+        return data["tickers"]
+
+    def create_article(self, news_item):
+
+        """Uploads article to MongoDB via an API."""
+
+        api.api_entry = "http://dev.gputop.com/api"
+        print(f"Creating article... -> {news_item['link']}")
+        res = api.api_call("/news/create", data = news_item)
+
+    
+
+    def pipeline(self):
+        processed = set()
+        tickers = []
+
+        for i in range(7):
+            tickers.extend(self.get_tickers())
+
+        #write code for API rotation - if data limit reached, go to next API
+        api_keys = ["JIHXVRY5SPIH16C9", "H7YVHH7OWYL87Z8P", "USGT8VND71NUHLVN"]
         api_key = None
-        not_found = []
+        i = 0
 
         for ticker in tickers:
-            print_g(f"Currently processing... {i}, {ticker['ticker']}, {ticker['exchange']}")        
             if ticker["exchange"] in ["NYSE", "NASDAQ"]:
-                i += 1
                 try:
-                    av_news = self.discover_av_news(ticker["ticker"], api_key)
-                except Exception as e:
+                    api_key = api_keys[i]
+                except KeyError:
+                    break
+                try:
+                    av_news = self.discover_news(ticker["ticker"], api_key)                    
+                except KeyError as e:
+                    
                     print_r(f"Error {e}")
-                    print_r(f"{ticker['ticker']} not found")
-                    not_found.append(ticker["ticker"])
+                    i += 1
                     continue
+
+                #free API has request limits
+                time.sleep(12)
                 while av_news:
                     try:
-                        relevance, item = heappop(av_news)
+                        relevance, news_item = heappop(av_news)
                     except TypeError:
-                        relevance, item = random.choice(av_news)
+                        relevance, news_item = random.choice(av_news)
                     
-                    #generate uuid
-                    uuid = generate_uuid(item)
-                    if self.in_database(item, uuid):
-                        print_r("News already in database...")
-                        continue
+                    news_item = self.process_news(news_item)
+                    if news_item["status"] == "INDEXED":
+                        self.create_article(news_item)
+                        print_g(f"ARTICLE CREATED: {news_item['publisher']}")
                     else:
-                        item = self.add_to_waiting_index(item, uuid)
-                        update = self.process_news(api, item)
-                        if update:
-                            js_dict = {'news': [update]}
-
-                            print(json.dumps(js_dict, indent=4))
-                            api.api_entry = "http://dev.gputop.com/api"
-                            res = api.api_call("/news/update", data=js_dict)
-
-                            if not res:
-                                print_e(" FAILED COMMUNICATING WITH API ")
-
-                            elif res['status'] == "error":
-                                print_e(" API ERROR " + res['error_msg'])
-
-                            elif res['status'] != "success":
-                                print_r(json.dumps(res, indent=4))
-                                print_e(" FAILED UPDATING ")
-
-                            else:
-                                print_g(" UPDATE SUCCESSFUL ")
-
+                        print_r("ERROR: ARTICLE NOT FOUND")
+        
         print_b(" FETCH FINISHED ")
-        return not_found
-
-            
-                
-                
-    
-    
-
-avp = av_pipeline()
-avp.pipeline_test()
-

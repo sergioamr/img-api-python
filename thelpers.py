@@ -3,6 +3,9 @@ import datetime
 import requests
 import re
 
+
+
+
 def is_nasdaq_ticker(ticker):
     try:
         stock_info = yf.Ticker(ticker).info
